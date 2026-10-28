@@ -1,6 +1,37 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { verifyAccessToken } from "@/lib/jwt";
+
+interface EdgeTokenPayload {
+  userId: string;
+  email: string;
+  companyId: string;
+  roles: string[];
+  distributorId?: string | null;
+  assignedState?: string | null;
+  exp?: number;
+}
+
+function decodeJwtInEdge(token: string): EdgeTokenPayload | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    const payload = JSON.parse(jsonPayload) as EdgeTokenPayload;
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -42,7 +73,7 @@ export function middleware(request: NextRequest) {
 
   // Redirect from login/signup to dashboard if already authenticated
   if ((pathname === "/login" || pathname === "/signup") && token) {
-    const payload = verifyAccessToken(token);
+    const payload = decodeJwtInEdge(token);
     if (payload) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
@@ -53,7 +84,7 @@ export function middleware(request: NextRequest) {
   // Inject Tenant Context Headers if token is present
   const requestHeaders = new Headers(request.headers);
   if (token) {
-    const payload = verifyAccessToken(token);
+    const payload = decodeJwtInEdge(token);
     if (payload) {
       requestHeaders.set("x-company-id", payload.companyId);
       requestHeaders.set("x-user-id", payload.userId);
