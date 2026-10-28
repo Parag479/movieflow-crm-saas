@@ -1,0 +1,698 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id               String         @id @default(uuid())
+  name             String
+  code             String         @unique
+  logoUrl          String?
+  brandColor       String?        @default("#0c8de9")
+  email            String
+  phone            String?
+  address          String?
+  city             String?
+  country          String?        @default("India")
+  gstNumber        String?
+  status           String         @default("ACTIVE")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  users            User[]
+  movies           Movie[]
+  theaters         Theater[]
+  distributors     Distributor[]
+  deals            Deal[]
+  agreements       Agreement[]
+  shows            Show[]
+  payments         Payment[]
+  invoices         Invoice[]
+  leads            Lead[]
+  tasks            Task[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  subscriptions    Subscription[]
+  distributions    Distribution[]
+  collections      Collection[]
+  expenses         Expense[]
+  settlements      Settlement[]
+  distributorLedgers DistributorLedger[]
+
+  @@map("companies")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id        String   @id @default(uuid())
+  module    String
+  action    String
+  createdAt DateTime @default(now())
+
+  roles     RolePermission[]
+
+  @@unique([module, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  companyId    String
+  email        String     @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  avatarUrl    String?
+  designation  String?
+  territory    String?
+  assignedState String?
+  distributorId String?
+  status       String     @default("ACTIVE")
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  distributor  Distributor? @relation(fields: [distributorId], references: [id], onDelete: SetNull)
+  roles        UserRole[]
+  assignedLeads Lead[]    @relation("AssignedLeads")
+  assignedTasks Task[]    @relation("AssignedTasks")
+  notifications Notification[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// ─── Territory Model ──────────────────────────────────────────────────────────
+model Territory {
+  id           String   @id @default(uuid())
+  name         String   @unique // "Mumbai Circuit", "Maharashtra", "North India", etc.
+  code         String   @unique // "MUM", "MH", "NI", etc.
+  region       String   // "West", "North", "South", "East", "Overseas"
+  cities       String   // JSON array of city names
+  svgX         Float?   // SVG map x coordinate
+  svgY         Float?   // SVG map y coordinate
+  latitude     Float?
+  longitude    Float?
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  distributions Distribution[]
+  cityReleases  CityRelease[]
+  collections   Collection[]
+
+  @@map("territories")
+}
+
+// ─── Movie (extended) ─────────────────────────────────────────────────────────
+model Movie {
+  id                 String      @id @default(uuid())
+  companyId          String
+  title              String
+  posterUrl          String?
+  bannerUrl          String?
+  trailerUrl         String?
+  language           String      @default("Hindi")
+  genre              String      @default("Action")
+  durationMinutes    Int         @default(120)
+  rating             String?     @default("U/A")
+  castMembers        String?
+  crewMembers        String?
+  director           String?
+  producer           String?
+  productionHouse    String?
+  distributorName    String?
+  territoryRights    String?     @default("Pan India")
+  releaseDate        DateTime
+  budgetAmount       Float?      @default(0)
+  printsCost         Float?      @default(0)   // P&A cost
+  pubCost            Float?      @default(0)   // Publicity & Advertising
+  otherCost          Float?      @default(0)
+  totalDistCost      Float?      @default(0)   // Computed: prints + pub + other
+  weeklyGross        Float?      @default(0)   // Current week gross
+  lifetimeGross      Float?      @default(0)   // All-time gross
+  totalScreens       Int?        @default(0)   // Screens allocated across all territories
+  totalTheatres      Int?        @default(0)
+  status             String      @default("UPCOMING") // UPCOMING, IN_THEATERS, COMPLETED, ARCHIVED
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  company            Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deals              Deal[]
+  shows              Show[]
+  distributions      Distribution[]
+  collections        Collection[]
+  expenses           Expense[]
+  settlements        Settlement[]
+
+  @@map("movies")
+}
+
+// ─── Theater (extended) ───────────────────────────────────────────────────────
+model Theater {
+  id             String     @id @default(uuid())
+  companyId      String
+  name           String
+  address        String
+  city           String
+  state          String
+  postalCode     String?
+  circuit        String?    // "PVR INOX", "Cinepolis", "UFO", "Single Screen"
+  latitude       Float?
+  longitude      Float?
+  totalScreens   Int        @default(1)
+  totalCapacity  Int        @default(300)
+  ownerName      String?
+  ownerPhone     String?
+  ownerEmail     String?
+  facilities     String?
+  status         String     @default("ACTIVE")
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  company        Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  screens        Screen[]
+  deals          Deal[]
+  cityReleases   CityRelease[]
+  collections    Collection[]
+  settlements    Settlement[]
+
+  @@map("theaters")
+}
+
+model Screen {
+  id              String     @id @default(uuid())
+  theaterId       String
+  screenNumber    Int
+  name            String
+  seatingCapacity Int        @default(150)
+  screenFormat    String     @default("2D")
+  soundSystem     String     @default("Dolby 7.1")
+  status          String     @default("OPERATIONAL")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  theater         Theater    @relation(fields: [theaterId], references: [id], onDelete: Cascade)
+  shows           Show[]
+  collections     Collection[]
+
+  @@map("screens")
+}
+
+model Distributor {
+  id            String     @id @default(uuid())
+  companyId     String
+  name          String
+  code          String
+  type          String     @default("MAIN") // MAIN, SUB, OVERSEAS
+  territory     String?    // Primary territory
+  states        String?    // JSON array of state names e.g. ["Maharashtra", "Goa"]
+  gstNumber     String?
+  panNumber     String?
+  bankName      String?
+  accountNumber String?
+  ifscCode      String?
+  contactPerson String?
+  email         String?
+  phone         String?
+  documents     String?
+  status        String     @default("ACTIVE")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  company       Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users         User[]
+  deals         Deal[]
+  distributions Distribution[]
+  settlements   Settlement[]
+  collections   Collection[]
+  invoices      Invoice[]
+  payments      Payment[]
+  ledgerEntries DistributorLedger[]
+
+  @@map("distributors")
+}
+
+// ─── Distribution — Movie assigned to Territory ───────────────────────────────
+model Distribution {
+  id                   String     @id @default(uuid())
+  companyId            String
+  movieId              String
+  distributorId        String?
+  territoryId          String
+  releaseDate          DateTime
+  weekOfRelease        Int        @default(1)
+  totalScreens         Int        @default(0)
+  totalTheatres        Int        @default(0)
+  distributionCost     Float      @default(0)   // Cost to distribute in this territory
+  printsCost           Float      @default(0)
+  pubCost              Float      @default(0)
+  grossCollection      Float      @default(0)
+  netCollection        Float      @default(0)
+  distributorShare     Float      @default(0)   // Amount
+  exhibitorShare       Float      @default(0)
+  distributorSharePct  Float      @default(50)  // Percentage
+  exhibitorSharePct    Float      @default(50)
+  occupancyRate        Float      @default(0)
+  status               String     @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  company              Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  movie                Movie      @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  distributor          Distributor? @relation(fields: [distributorId], references: [id])
+  territory            Territory  @relation(fields: [territoryId], references: [id])
+  cityReleases         CityRelease[]
+  collections          Collection[]
+
+  @@map("distributions")
+}
+
+// ─── CityRelease — Per-city release data ──────────────────────────────────────
+model CityRelease {
+  id               String     @id @default(uuid())
+  distributionId   String
+  territoryId      String
+  theaterId        String
+  city             String
+  state            String
+  screensAllocated Int        @default(1)
+  showsPerDay      Int        @default(4)
+  ticketPrice      Float      @default(200)
+  distributionCost Float      @default(0)
+  grossCollection  Float      @default(0)
+  occupancyRate    Float      @default(0)
+  status           String     @default("ACTIVE")
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  distribution     Distribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  territory        Territory    @relation(fields: [territoryId], references: [id])
+  theater          Theater      @relation(fields: [theaterId], references: [id])
+
+  @@map("city_releases")
+}
+
+// ─── Collection — Daily box office collection ─────────────────────────────────
+model Collection {
+  id                  String    @id @default(uuid())
+  companyId           String
+  movieId             String
+  distributorId       String?
+  distributionId      String?
+  territoryId         String?
+  theaterId           String?
+  screenId            String?
+  showId              String?
+  state               String?
+  city                String?
+  collectionDate      DateTime
+  week                Int       @default(1)
+  dayOfWeek           String?   // "Monday", "Friday" etc.
+  grossAmount         Float     @default(0)
+  gstRate             Float     @default(18)
+  gstAmount           Float     @default(0)
+  deductions          Float     @default(0)
+  netAmount           Float     @default(0)   // After tax and deductions
+  distributorSharePct Float     @default(50)
+  exhibitorSharePct   Float     @default(50)
+  distributorAmt      Float     @default(0)
+  exhibitorAmt        Float     @default(0)
+  admissions          Int       @default(0)  // Tickets sold
+  occupancyRate       Float     @default(0)
+  shows               Int       @default(4)
+  notes               String?
+  status              String    @default("VERIFIED") // PENDING, VERIFIED, DISPUTED
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  movie           Movie         @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  distributor     Distributor?  @relation(fields: [distributorId], references: [id])
+  distribution    Distribution? @relation(fields: [distributionId], references: [id])
+  territory       Territory?    @relation(fields: [territoryId], references: [id])
+  theater         Theater?      @relation(fields: [theaterId], references: [id])
+  screen          Screen?       @relation(fields: [screenId], references: [id])
+  show            Show?         @relation(fields: [showId], references: [id])
+
+  @@unique([companyId, movieId, screenId, collectionDate])
+  @@map("collections")
+}
+
+// ─── Expense — P&A and distribution expenses ─────────────────────────────────
+model Expense {
+  id          String    @id @default(uuid())
+  companyId   String
+  movieId     String
+  category    String    // PRINTS, PUBLICITY, VFX, MARKETING, FREIGHT, MISC
+  description String
+  amount      Float     @default(0)
+  territory   String?
+  expenseDate DateTime  @default(now())
+  invoiceRef  String?
+  status      String    @default("PAID") // PAID, PENDING, APPROVED
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  movie       Movie     @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@map("expenses")
+}
+
+// ─── Settlement — Distributor/Exhibitor financial settlement ──────────────────
+model Settlement {
+  id              String      @id @default(uuid())
+  companyId       String
+  distributorId   String?
+  theaterId       String?
+  movieId         String?
+  movieTitle      String
+  territory       String
+  state           String?
+  week            Int         @default(1)
+  grossCollection Float       @default(0)
+  distributorAmt  Float       @default(0)
+  exhibitorAmt    Float       @default(0)
+  gstAmount       Float       @default(0)
+  tdsAmount       Float       @default(0)
+  netPayable      Float       @default(0)
+  status          String      @default("PENDING") // PENDING, PAID, DISPUTED
+  settledAt       DateTime?
+  remarks         String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  distributor     Distributor? @relation(fields: [distributorId], references: [id])
+  theater         Theater?     @relation(fields: [theaterId], references: [id])
+  movie           Movie?       @relation(fields: [movieId], references: [id])
+  ledgerEntries   DistributorLedger[]
+
+  @@map("settlements")
+}
+
+// ─── Deal (extended) ──────────────────────────────────────────────────────────
+model Deal {
+  id                    String      @id @default(uuid())
+  dealNumber            String      @unique
+  companyId             String
+  movieId               String
+  theaterId             String
+  distributorId         String?
+  agreementType         String      @default("REVENUE_SHARE")
+  mgAmount              Float       @default(0)
+  revenueSharePercent   Float       @default(50)
+  distributorSharePct   Float       @default(50)
+  exhibitorSharePct     Float       @default(50)
+  distributorCommission Float       @default(10)
+  fixedRentalAmount     Float       @default(0)
+  territory             String      @default("Pan India")
+  weeklySettlementDay   String      @default("Monday")
+  startDate             DateTime
+  endDate               DateTime
+  status                String      @default("EXECUTED")
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  company               Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  movie                 Movie       @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  theater               Theater     @relation(fields: [theaterId], references: [id], onDelete: Cascade)
+  distributor           Distributor? @relation(fields: [distributorId], references: [id])
+  agreements            Agreement[]
+  shows                 Show[]
+  payments              Payment[]
+  invoices              Invoice[]
+
+  @@map("deals")
+}
+
+model Agreement {
+  id               String    @id @default(uuid())
+  agreementNumber  String    @unique
+  companyId        String
+  dealId           String
+  pdfUrl           String?
+  signedDate       DateTime?
+  digitalSignature String?
+  terms            String?
+  status           String    @default("ACTIVE")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal             Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@map("agreements")
+}
+
+model Show {
+  id                   String   @id @default(uuid())
+  companyId            String
+  movieId              String
+  screenId             String
+  dealId               String?
+  showDate             DateTime
+  startTime            String
+  endTime              String
+  ticketPriceStandard  Float    @default(200)
+  ticketPriceVip       Float    @default(400)
+  seatsBooked          Int      @default(0)
+  conflictLocked       Boolean  @default(false)
+  status               String   @default("SCHEDULED")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  movie                Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  screen               Screen   @relation(fields: [screenId], references: [id], onDelete: Cascade)
+  deal                 Deal?    @relation(fields: [dealId], references: [id])
+  collections          Collection[]
+
+  @@map("shows")
+}
+
+model Payment {
+  id             String    @id @default(uuid())
+  paymentNumber  String    @unique
+  companyId      String
+  dealId         String?
+  distributorId  String?
+  invoiceId      String?
+  amount         Float
+  paymentType    String    @default("ADVANCE") // ADVANCE, INVOICE_PAYMENT, SETTLEMENT, ON_ACCOUNT
+  paymentMethod  String    @default("BANK_TRANSFER") // BANK_TRANSFER, CHEQUE, RTGS_NEFT, UPI
+  transactionRef String?   // Bank reference / UTR / Cheque number
+  receiptUrl     String?   // Uploaded payment receipt URL / doc
+  notes          String?
+  status         String    @default("COMPLETED") // DRAFT, PENDING, COMPLETED, VERIFIED, REJECTED
+  verifiedAt     DateTime?
+  verifiedBy     String?
+  paidAt         DateTime? @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal           Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  distributor    Distributor? @relation(fields: [distributorId], references: [id])
+  invoice        Invoice?     @relation(fields: [invoiceId], references: [id])
+  ledgerEntries  DistributorLedger[]
+
+  @@map("payments")
+}
+
+model Invoice {
+  id              String    @id @default(uuid())
+  invoiceNumber   String    @unique
+  companyId       String
+  dealId          String?
+  distributorId   String?
+  amountBeforeTax Float
+  cgstAmount      Float     @default(0)
+  sgstAmount      Float     @default(0)
+  igstAmount      Float     @default(0)
+  totalAmount     Float
+  paidAmount      Float     @default(0)
+  balanceAmount   Float     @default(0)
+  dueDate         DateTime
+  paidAt          DateTime?
+  pdfUrl          String?
+  notes           String?
+  status          String    @default("ISSUED") // DRAFT, ISSUED, PARTIALLY_PAID, PAID, OVERDUE, DISPUTED
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal            Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  distributor     Distributor? @relation(fields: [distributorId], references: [id])
+  payments        Payment[]
+  ledgerEntries   DistributorLedger[]
+
+  @@map("invoices")
+}
+
+model DistributorLedger {
+  id              String      @id @default(uuid())
+  companyId       String
+  distributorId   String
+  entryDate       DateTime    @default(now())
+  entryType       String      // "DEBIT" | "CREDIT"
+  category        String      // "OPENING_BALANCE" | "INVOICE" | "PAYMENT" | "SETTLEMENT" | "ADJUSTMENT"
+  referenceNumber String      // Reference (e.g. INV-..., PAY-..., SET-..., ADJ-...)
+  description     String
+  debitAmount     Float       @default(0)  // Amount billed / charged to distributor
+  creditAmount    Float       @default(0)  // Amount paid / credited
+  runningBalance  Float       @default(0)  // Balance after this transaction
+  invoiceId       String?
+  paymentId       String?
+  settlementId    String?
+  createdBy       String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  distributor     Distributor  @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  invoice         Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  payment         Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  settlement      Settlement?  @relation(fields: [settlementId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, distributorId, entryDate])
+  @@map("distributor_ledgers")
+}
+
+model Lead {
+  id             String     @id @default(uuid())
+  companyId      String
+  title          String
+  contactName    String
+  companyName    String?
+  email          String?
+  phone          String?
+  stage          String     @default("NEW_LEAD")
+  dealValue      Float      @default(0)
+  probability    Int        @default(50)
+  source         String?    @default("Direct Outreach")
+  assignedToId   String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  company        Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedTo     User?      @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  tasks          Task[]
+
+  @@map("leads")
+}
+
+model Task {
+  id           String    @id @default(uuid())
+  companyId    String
+  leadId       String?
+  title        String
+  description  String?
+  dueDate      DateTime?
+  priority     String    @default("MEDIUM")
+  status       String    @default("PENDING")
+  assignedToId String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedTo   User?     @relation("AssignedTasks", fields: [assignedToId], references: [id])
+
+  @@map("tasks")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  companyId String
+  userId    String?
+  title     String
+  message   String
+  type      String   @default("SYSTEM")
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  companyId  String
+  userId     String?
+  action     String
+  entityName String
+  entityId   String?
+  details    String?
+  ipAddress  String?  @default("127.0.0.1")
+  createdAt  DateTime @default(now())
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+model Subscription {
+  id           String   @id @default(uuid())
+  companyId    String
+  plan         String   @default("ENTERPRISE")
+  billingCycle String   @default("ANNUAL")
+  price        Float    @default(99999)
+  startDate    DateTime @default(now())
+  endDate      DateTime
+  autoRenew    Boolean  @default(true)
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
